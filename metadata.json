@@ -1,0 +1,5 @@
+{
+  "name": "ShiftSync - Roster Management",
+  "description": "A multi-tenant ready staff roster and shift management MVP. Features employee management, availability tracking, and a weekly interactive roster grid.",
+  "requestFramePermissions": []
+}
