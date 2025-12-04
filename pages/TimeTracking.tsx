@@ -2,15 +2,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../App';
 import { store } from '../services/store';
-import { Shift, Employee } from '../types';
+import { Shift, Employee, ShiftBreak } from '../types';
 import { WEEKDAYS } from '../constants';
-import { ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react';
+import { calculatePlannedMinutes, calculateNetWorkedMinutes, formatDuration, calculateTotalBreakMinutes } from '../services/timeUtils';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 
 const TimeTrackingPage = () => {
   const { user } = useAuth();
   const [weekOffset, setWeekOffset] = useState(0);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [breaks, setBreaks] = useState<ShiftBreak[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Calculate week dates securely
@@ -32,33 +34,20 @@ const TimeTrackingPage = () => {
   const fetchData = async () => {
     if (!user?.companyId) return;
     setIsLoading(true);
-    const [emps, shiftsData] = await Promise.all([
+    const [emps, shiftsData, breaksData] = await Promise.all([
       store.getEmployees(user.companyId),
-      store.getShifts(user.companyId, weekDates[0], weekDates[6])
+      store.getShifts(user.companyId, weekDates[0], weekDates[6]),
+      store.getAllBreaks(user.companyId)
     ]);
     setEmployees(emps);
     setShifts(shiftsData);
+    setBreaks(breaksData);
     setIsLoading(false);
   };
 
   useEffect(() => {
     fetchData();
   }, [weekOffset, user]);
-
-  const calculateHours = (startStr: string, endStr: string) => {
-    // Format "HH:mm"
-    const start = parseInt(startStr.split(':')[0]) + parseInt(startStr.split(':')[1])/60;
-    const end = parseInt(endStr.split(':')[0]) + parseInt(endStr.split(':')[1])/60;
-    return Math.max(0, end - start).toFixed(2);
-  };
-
-  const calculateActualHours = (startIso?: string, endIso?: string) => {
-    if (!startIso || !endIso) return '0.00';
-    const start = new Date(startIso).getTime();
-    const end = new Date(endIso).getTime();
-    const diffHours = (end - start) / (1000 * 60 * 60);
-    return Math.max(0, diffHours).toFixed(2);
-  };
 
   const formatTime = (iso?: string) => {
       if(!iso) return '-';
@@ -73,7 +62,7 @@ const TimeTrackingPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Time Tracking</h1>
-          <p className="text-slate-500 mt-1">Monitor attendance and compare scheduled vs. actual hours.</p>
+          <p className="text-slate-500 mt-1">Monitor attendance and compare scheduled vs. actual hours (net of breaks).</p>
         </div>
         
         <div className="flex items-center space-x-2 bg-white p-1 rounded-md border border-slate-200 shadow-sm">
@@ -103,17 +92,25 @@ const TimeTrackingPage = () => {
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Employee</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Scheduled</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Planned</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Actual In/Out</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Breaks</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Net Worked</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Variance</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
                         {trackedShifts.map(shift => {
                             const emp = employees.find(e => e.id === shift.employeeId);
-                            const planned = calculateHours(shift.startTime, shift.endTime);
-                            const actual = calculateActualHours(shift.checkInTime, shift.checkOutTime);
-                            const variance = parseFloat(actual) - parseFloat(planned);
+                            const shiftBreaks = breaks.filter(b => b.shiftId === shift.id);
+                            
+                            const plannedMins = calculatePlannedMinutes(shift.startTime, shift.endTime);
+                            const breakMins = calculateTotalBreakMinutes(shiftBreaks);
+                            const netWorkedMins = calculateNetWorkedMinutes(shift, shiftBreaks);
+                            
+                            const plannedHours = (plannedMins / 60).toFixed(2);
+                            const actualHours = (netWorkedMins / 60).toFixed(2);
+                            const varianceHours = (netWorkedMins - plannedMins) / 60;
                             
                             // Determine row status
                             const isComplete = !!shift.checkOutTime;
@@ -132,7 +129,7 @@ const TimeTrackingPage = () => {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm text-slate-900">{shift.startTime} - {shift.endTime}</div>
-                                        <div className="text-xs text-slate-500">{planned} hrs</div>
+                                        <div className="text-xs text-slate-500">{plannedHours} hrs</div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {isMissing ? (
@@ -150,21 +147,26 @@ const TimeTrackingPage = () => {
                                             </div>
                                         )}
                                     </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                        {breakMins > 0 ? formatDuration(breakMins) : '-'}
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {isComplete ? (
-                                            <div>
-                                                <div className="text-sm font-medium text-slate-900">{actual} hrs</div>
-                                                <div className={`text-xs ${variance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                                    {variance > 0 ? '+' : ''}{variance.toFixed(2)} vs planned
-                                                </div>
-                                            </div>
+                                            <span className="text-sm font-bold text-slate-900">{actualHours} hrs</span>
                                         ) : isInProgress ? (
                                             <span className="inline-flex items-center text-xs font-medium text-indigo-600 animate-pulse">
-                                                <Clock className="w-3 h-3 mr-1" /> Working now...
+                                                <Clock className="w-3 h-3 mr-1" /> Working...
                                             </span>
                                         ) : (
                                             <span className="text-slate-400 text-xs">-</span>
                                         )}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                         {isComplete ? (
+                                             <div className={`text-xs ${varianceHours < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                                 {varianceHours > 0 ? '+' : ''}{varianceHours.toFixed(2)} hrs
+                                             </div>
+                                         ) : '-'}
                                     </td>
                                 </tr>
                             );

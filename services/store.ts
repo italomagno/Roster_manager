@@ -1,5 +1,5 @@
 
-import { Employee, Shift, Availability, ShiftStatus, User, CompanyRole, Position } from '../types';
+import { Employee, Shift, Availability, ShiftStatus, User, CompanyRole, Position, ShiftBreak } from '../types';
 import { MOCK_COMPANY_ID, MOCK_USER_STAFF_ID, INITIAL_EMPLOYEES, INITIAL_POSITIONS } from '../constants';
 
 // Helper to delay response to simulate network
@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   SHIFTS: 'shiftsync_shifts',
   AVAILABILITY: 'shiftsync_availability',
   POSITIONS: 'shiftsync_positions',
+  BREAKS: 'shiftsync_breaks',
 };
 
 // Seed data if empty
@@ -25,6 +26,9 @@ const seedData = () => {
   }
   if (!localStorage.getItem(STORAGE_KEYS.POSITIONS)) {
     localStorage.setItem(STORAGE_KEYS.POSITIONS, JSON.stringify(INITIAL_POSITIONS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.BREAKS)) {
+    localStorage.setItem(STORAGE_KEYS.BREAKS, JSON.stringify([]));
   }
 };
 
@@ -83,7 +87,7 @@ export const store = {
     return employee;
   },
 
-  // --- Positions (New Feature) ---
+  // --- Positions ---
   getPositions: async (companyId: string): Promise<Position[]> => {
     await delay(200);
     const all: Position[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.POSITIONS) || '[]');
@@ -120,7 +124,7 @@ export const store = {
   saveAvailability: async (availabilities: Availability[], employeeId: string): Promise<void> => {
     await delay(300);
     let all: Availability[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.AVAILABILITY) || '[]');
-    // Remove existing for this employee (simple replacement strategy for MVP)
+    // Remove existing for this employee
     all = all.filter(a => a.employeeId !== employeeId);
     // Add new
     all = [...all, ...availabilities];
@@ -137,11 +141,22 @@ export const store = {
       s.date <= weekEnd
     );
   },
+
+  // For Reporting: Get all shifts in a date range for a specific employee
+  getShiftsByDateRange: async (companyId: string, employeeId: string, startDate: string, endDate: string): Promise<Shift[]> => {
+    await delay(300);
+    const all: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
+    return all.filter(s => 
+      s.companyId === companyId && 
+      s.employeeId === employeeId &&
+      s.date >= startDate && 
+      s.date <= endDate
+    ).sort((a,b) => a.date.localeCompare(b.date));
+  },
   
   getEmployeeShifts: async (companyId: string, employeeId: string): Promise<Shift[]> => {
     await delay(300);
     const all: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
-    // Return future shifts or recent ones
     return all
       .filter(s => s.companyId === companyId && s.employeeId === employeeId)
       .sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
@@ -149,11 +164,10 @@ export const store = {
 
   saveShift: async (shift: Shift): Promise<Shift> => {
     await delay(200);
-    // FEATURE TODO: Auto-scheduler constraint check would go here
     const all: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
     const index = all.findIndex(s => s.id === shift.id);
     
-    // Enrich with employee name for display speed
+    // Enrich with employee name
     const employees: Employee[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.EMPLOYEES) || '[]');
     const emp = employees.find(e => e.id === shift.employeeId);
     if (emp) shift.employeeName = emp.fullName;
@@ -177,7 +191,40 @@ export const store = {
      }
   },
 
-  // --- Time Tracking ---
+  deleteShift: async (shiftId: string): Promise<void> => {
+    await delay(200);
+    let all: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
+    all = all.filter(s => s.id !== shiftId);
+    localStorage.setItem(STORAGE_KEYS.SHIFTS, JSON.stringify(all));
+  },
+
+  // --- Time Tracking & Breaks ---
+
+  getBreaks: async (shiftId: string): Promise<ShiftBreak[]> => {
+    await delay(100);
+    const all: ShiftBreak[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.BREAKS) || '[]');
+    return all.filter(b => b.shiftId === shiftId);
+  },
+
+  // For reporting: Get all breaks for a company (in real app, would be DB filtered)
+  getAllBreaks: async (companyId: string): Promise<ShiftBreak[]> => {
+    await delay(100);
+    const all: ShiftBreak[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.BREAKS) || '[]');
+    return all.filter(b => b.companyId === companyId);
+  },
+
+  saveShiftBreak: async (shiftBreak: ShiftBreak): Promise<void> => {
+    await delay(200);
+    const all: ShiftBreak[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.BREAKS) || '[]');
+    const index = all.findIndex(b => b.id === shiftBreak.id);
+    if (index >= 0) {
+        all[index] = shiftBreak;
+    } else {
+        all.push(shiftBreak);
+    }
+    localStorage.setItem(STORAGE_KEYS.BREAKS, JSON.stringify(all));
+  },
+
   checkInShift: async (shiftId: string): Promise<void> => {
     await delay(200);
     const all: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
@@ -190,20 +237,32 @@ export const store = {
 
   checkOutShift: async (shiftId: string): Promise<void> => {
     await delay(200);
-    const all: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
-    const index = all.findIndex(s => s.id === shiftId);
+    
+    // 1. Close any open breaks for this shift automatically
+    const allBreaks: ShiftBreak[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.BREAKS) || '[]');
+    const checkOutTime = new Date().toISOString();
+    let breaksChanged = false;
+
+    const updatedBreaks = allBreaks.map(b => {
+        if (b.shiftId === shiftId && !b.breakOut) {
+            breaksChanged = true;
+            return { ...b, breakOut: checkOutTime };
+        }
+        return b;
+    });
+
+    if (breaksChanged) {
+        localStorage.setItem(STORAGE_KEYS.BREAKS, JSON.stringify(updatedBreaks));
+    }
+
+    // 2. Perform Checkout
+    const allShifts: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
+    const index = allShifts.findIndex(s => s.id === shiftId);
     if (index >= 0) {
-      all[index].checkOutTime = new Date().toISOString();
-      localStorage.setItem(STORAGE_KEYS.SHIFTS, JSON.stringify(all));
+      allShifts[index].checkOutTime = checkOutTime;
+      localStorage.setItem(STORAGE_KEYS.SHIFTS, JSON.stringify(allShifts));
     }
   },
-
-  deleteShift: async (shiftId: string): Promise<void> => {
-    await delay(200);
-    let all: Shift[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS) || '[]');
-    all = all.filter(s => s.id !== shiftId);
-    localStorage.setItem(STORAGE_KEYS.SHIFTS, JSON.stringify(all));
-  }
 };
 
 // Mock Auth

@@ -1,15 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
-import { Shift, ShiftStatus, Employee } from '../types';
+import { Shift, ShiftStatus, Employee, ShiftBreak } from '../types';
 import { useAuth } from '../App';
 import { store } from '../services/store';
 import { Button, StatusBadge } from '../components/ui';
-import { Check, X, Calendar, Clock, MapPin, Play, Square, LogIn, LogOut } from 'lucide-react';
+import { Check, X, Clock, LogIn, LogOut, Coffee } from 'lucide-react';
 import { WEEKDAYS } from '../constants';
+import { calculateTotalBreakMinutes, formatDuration } from '../services/timeUtils';
 
 const MyShiftsPage = () => {
   const { user } = useAuth();
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [breaks, setBreaks] = useState<ShiftBreak[]>([]); // All breaks relevant to these shifts
   const [myEmployeeProfile, setMyEmployeeProfile] = useState<Employee | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -23,6 +25,11 @@ const MyShiftsPage = () => {
     if (emp) {
       const myShifts = await store.getEmployeeShifts(user.companyId, emp.id);
       setShifts(myShifts);
+      
+      // Fetch breaks for these shifts
+      const breaksPromises = myShifts.map(s => store.getBreaks(s.id));
+      const allBreaks = await Promise.all(breaksPromises);
+      setBreaks(allBreaks.flat());
     }
     
     setIsLoading(false);
@@ -43,8 +50,32 @@ const MyShiftsPage = () => {
   };
 
   const handleCheckOut = async (shiftId: string) => {
+    // Note: store.checkOutShift automatically closes open breaks
     await store.checkOutShift(shiftId);
     fetchData();
+  };
+
+  const handleStartBreak = async (shiftId: string) => {
+    if (!user?.companyId || !myEmployeeProfile) return;
+    const newBreak: ShiftBreak = {
+        id: `break_${Date.now()}`,
+        companyId: user.companyId,
+        shiftId,
+        employeeId: myEmployeeProfile.id,
+        breakIn: new Date().toISOString()
+    };
+    await store.saveShiftBreak(newBreak);
+    fetchData();
+  };
+
+  const handleEndBreak = async (shiftId: string) => {
+    // Find the open break
+    const openBreak = breaks.find(b => b.shiftId === shiftId && !b.breakOut);
+    if (openBreak) {
+        openBreak.breakOut = new Date().toISOString();
+        await store.saveShiftBreak(openBreak);
+        fetchData();
+    }
   };
 
   const formatTime = (isoDateString?: string) => {
@@ -93,6 +124,11 @@ const MyShiftsPage = () => {
               const dateObj = new Date(shift.date);
               const dayName = WEEKDAYS[dateObj.getDay()];
               const shiftIsToday = isToday(shift.date);
+              
+              // Break Logic
+              const shiftBreaks = breaks.filter(b => b.shiftId === shift.id);
+              const isOnBreak = shiftBreaks.some(b => !b.breakOut);
+              const totalBreakMinutes = calculateTotalBreakMinutes(shiftBreaks);
 
               return (
                 <li key={shift.id} className="px-6 py-4 hover:bg-slate-50 transition-colors">
@@ -109,6 +145,11 @@ const MyShiftsPage = () => {
                         <div className="flex items-center gap-2 mb-1">
                            <h3 className="text-sm font-medium text-slate-900">{shift.role || myEmployeeProfile.role}</h3>
                            <StatusBadge status={shift.status} />
+                           {isOnBreak && (
+                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 animate-pulse">
+                               <Coffee className="w-3 h-3 mr-1" /> On Break
+                             </span>
+                           )}
                         </div>
                         <div className="space-y-1 text-sm text-slate-500">
                           <div className="flex items-center gap-2">
@@ -116,10 +157,14 @@ const MyShiftsPage = () => {
                             <span>{shift.startTime} - {shift.endTime}</span>
                           </div>
                           {(shift.checkInTime || shift.checkOutTime) && (
-                            <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 bg-slate-100 px-2 py-1 rounded w-fit">
-                                <span className={shift.checkInTime ? 'text-green-600 font-medium' : 'text-slate-400'}>In: {formatTime(shift.checkInTime)}</span>
-                                <span className="text-slate-300">|</span>
-                                <span className={shift.checkOutTime ? 'text-red-600 font-medium' : 'text-slate-400'}>Out: {formatTime(shift.checkOutTime)}</span>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1">
+                                <span className={`bg-slate-100 px-2 py-1 rounded ${shift.checkInTime ? 'text-green-600 font-medium' : 'text-slate-400'}`}>In: {formatTime(shift.checkInTime)}</span>
+                                <span className={`bg-slate-100 px-2 py-1 rounded ${shift.checkOutTime ? 'text-red-600 font-medium' : 'text-slate-400'}`}>Out: {formatTime(shift.checkOutTime)}</span>
+                                {totalBreakMinutes > 0 && (
+                                    <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded flex items-center">
+                                        <Coffee className="w-3 h-3 mr-1" /> {formatDuration(totalBreakMinutes)} break
+                                    </span>
+                                )}
                             </div>
                           )}
                         </div>
@@ -127,7 +172,7 @@ const MyShiftsPage = () => {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                         {/* 1. Status Actions */}
                         {shift.status === ShiftStatus.SCHEDULED && (
                             <>
@@ -150,10 +195,11 @@ const MyShiftsPage = () => {
 
                         {/* 2. Time Clock Actions */}
                         {shift.status === ShiftStatus.CONFIRMED && (
-                            <div className="flex items-center gap-2">
+                            <>
+                                {/* Check In / Out Buttons */}
                                 {!shift.checkInTime ? (
                                     <Button 
-                                        disabled={!shiftIsToday} // Only allow check-in on the day
+                                        disabled={!shiftIsToday} 
                                         variant="primary"
                                         className="bg-indigo-600 hover:bg-indigo-700 text-xs py-1.5"
                                         onClick={() => handleCheckIn(shift.id)}
@@ -162,19 +208,40 @@ const MyShiftsPage = () => {
                                         <LogIn className="w-3 h-3 mr-1" /> Check In
                                     </Button>
                                 ) : !shift.checkOutTime ? (
-                                    <Button 
-                                        variant="danger"
-                                        className="text-xs py-1.5"
-                                        onClick={() => handleCheckOut(shift.id)}
-                                    >
-                                        <LogOut className="w-3 h-3 mr-1" /> Check Out
-                                    </Button>
+                                    <div className="flex gap-2">
+                                        {/* Break Controls */}
+                                        {isOnBreak ? (
+                                            <Button
+                                                variant="secondary"
+                                                className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200 text-xs py-1.5"
+                                                onClick={() => handleEndBreak(shift.id)}
+                                            >
+                                                <Coffee className="w-3 h-3 mr-1" /> End Break
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                variant="outline"
+                                                className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs py-1.5"
+                                                onClick={() => handleStartBreak(shift.id)}
+                                            >
+                                                <Coffee className="w-3 h-3 mr-1" /> Break
+                                            </Button>
+                                        )}
+                                        
+                                        <Button 
+                                            variant="danger"
+                                            className="text-xs py-1.5"
+                                            onClick={() => handleCheckOut(shift.id)}
+                                        >
+                                            <LogOut className="w-3 h-3 mr-1" /> Check Out
+                                        </Button>
+                                    </div>
                                 ) : (
                                     <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
                                         Shift Completed
                                     </span>
                                 )}
-                            </div>
+                            </>
                         )}
 
                         {/* Status Feedback */}

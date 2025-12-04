@@ -45,6 +45,8 @@ export interface Employee {
   // Feature: Time Constraints
   allowedStartTime?: string; // "09:00"
   allowedEndTime?: string;   // "17:00"
+  // Feature: Payroll
+  hourlyRate?: number; // e.g. 15.50
 }
 
 export interface Availability {
@@ -53,6 +55,15 @@ export interface Availability {
   weekday: number;
   startTime: string;
   endTime: string;
+}
+
+export interface ShiftBreak {
+  id: string;
+  companyId: string;
+  shiftId: string;
+  employeeId: string;
+  breakIn: string;   // ISO datetime string
+  breakOut?: string; // ISO datetime string or undefined while ongoing
 }
 
 export interface Shift {

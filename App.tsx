@@ -3,7 +3,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { User as UserType, CompanyRole } from './types';
 import { mockLogin } from './services/store';
-import { Users, Calendar, UserCheck, LogOut, LayoutDashboard, Menu, X, Tag, Clock } from 'lucide-react';
+import { Users, Calendar, UserCheck, LogOut, LayoutDashboard, Menu, X, Tag, Clock, Briefcase, PieChart } from 'lucide-react';
 
 // --- Auth Context ---
 interface AuthContextType {
@@ -86,11 +86,13 @@ const NavLinks = ({ user, onItemClick }: { user: UserType | null, onItemClick?: 
           <LinkItem icon={Users} label="Employees" to="/employees" />
           <LinkItem icon={Tag} label="Positions" to="/positions" />
           <LinkItem icon={Clock} label="Time Tracking" to="/tracking" />
+          <LinkItem icon={PieChart} label="Reports" to="/reports" />
         </>
       )}
 
       {/* Staff Views */}
       <LinkItem icon={UserCheck} label="My Shifts" to="/myshifts" />
+      <LinkItem icon={Briefcase} label="My Work" to="/my-work" />
     </nav>
   );
 };
@@ -209,6 +211,8 @@ import MyShiftsPage from './pages/MyShifts';
 import AvailabilityPage from './pages/Availability';
 import PositionsPage from './pages/Positions';
 import TimeTrackingPage from './pages/TimeTracking';
+import MyWorkPage from './pages/MyWork';
+import ReportsPage from './pages/Reports';
 
 // --- Main App Component ---
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -245,8 +249,16 @@ const App = () => {
             <ProtectedRoute><TimeTrackingPage /></ProtectedRoute>
           } />
           
+          <Route path="/reports" element={
+            <ProtectedRoute><ReportsPage /></ProtectedRoute>
+          } />
+          
           <Route path="/myshifts" element={
             <ProtectedRoute><MyShiftsPage /></ProtectedRoute>
+          } />
+          
+          <Route path="/my-work" element={
+            <ProtectedRoute><MyWorkPage /></ProtectedRoute>
           } />
 
           <Route path="/" element={<Navigate to="/roster" replace />} />

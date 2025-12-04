@@ -4,7 +4,7 @@ import { Employee, Position } from '../types';
 import { useAuth } from '../App';
 import { store } from '../services/store';
 import { Button, Input, Modal } from '../components/ui';
-import { Plus, Edit2, User as UserIcon, MapPin, Clock, Search, Calendar, CheckSquare, Square } from 'lucide-react';
+import { Plus, Edit2, User as UserIcon, MapPin, Clock, Search, Calendar, CheckSquare, Square, DollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const EmployeesPage = () => {
@@ -56,6 +56,7 @@ const EmployeesPage = () => {
       isActive: true,
       allowedStartTime: formData.get('allowedStartTime') as string,
       allowedEndTime: formData.get('allowedEndTime') as string,
+      hourlyRate: Number(formData.get('hourlyRate')) || undefined,
     };
 
     await store.saveEmployee(newEmployee);
@@ -137,6 +138,7 @@ const EmployeesPage = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Positions</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Location</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Hours/Wk</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Rate</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
                   <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
@@ -186,6 +188,9 @@ const EmployeesPage = () => {
                         <div className="flex items-center gap-1">
                            <Clock className="h-3 w-3" /> {emp.weeklyHours}h
                         </div>
+                      </td>
+                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+                        {emp.hourlyRate ? `$${emp.hourlyRate.toFixed(2)}/h` : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${emp.isActive ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-900' : 'bg-gray-100 text-gray-800 dark:bg-neutral-700 dark:text-slate-400'}`}>
@@ -275,6 +280,19 @@ const EmployeesPage = () => {
                   defaultValue={editingEmployee?.location} 
                   placeholder="e.g. Main Kitchen"
                 />
+                <div className="relative">
+                  <Input 
+                    label="Hourly Rate ($)" 
+                    name="hourlyRate" 
+                    type="number"
+                    step="0.01"
+                    defaultValue={editingEmployee?.hourlyRate || ''} 
+                    placeholder="15.00"
+                  />
+                  <div className="absolute right-3 top-8 text-slate-400 pointer-events-none">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
              </div>
           </div>
           
