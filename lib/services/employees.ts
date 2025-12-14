@@ -1,128 +1,123 @@
-import { createClient } from '../supabase/client'
+import prisma from '../prisma/client'
 import { Employee } from '../types'
+import { Prisma } from '@prisma/client'
 
 export async function getEmployees(companyId: string): Promise<Employee[]> {
-  const supabase = createClient()
+  const employees = await prisma.employee.findMany({
+    where: {
+      companyId,
+      isActive: true,
+    },
+    orderBy: {
+      fullName: 'asc',
+    },
+  })
 
-  const { data, error } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('is_active', true)
-    .order('full_name')
-
-  if (error) throw error
-
-  return (data || []).map((e: any) => ({
+  return employees.map((e) => ({
     id: e.id,
-    companyId: e.company_id,
-    userId: e.user_id,
-    fullName: e.full_name,
+    companyId: e.companyId,
+    userId: e.userId ?? undefined,
+    fullName: e.fullName,
     role: e.role,
-    positionIds: e.position_ids || [],
-    weeklyHours: Number(e.weekly_hours),
-    isActive: e.is_active,
-    location: e.location,
-    allowedStartTime: e.allowed_start_time,
-    allowedEndTime: e.allowed_end_time,
-    hourlyRate: e.hourly_rate ? Number(e.hourly_rate) : undefined,
+    positionIds: e.positionIds,
+    weeklyHours: Number(e.weeklyHours),
+    isActive: e.isActive,
+    location: e.location ?? undefined,
+    allowedStartTime: e.allowedStartTime ?? undefined,
+    allowedEndTime: e.allowedEndTime ?? undefined,
+    hourlyRate: e.hourlyRate ? Number(e.hourlyRate) : undefined,
   }))
 }
 
 export async function getEmployee(employeeId: string): Promise<Employee | null> {
-  const supabase = createClient()
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+  })
 
-  const { data, error } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('id', employeeId)
-    .maybeSingle()
-
-  if (error) throw error
-  if (!data) return null
+  if (!employee) return null
 
   return {
-    id: data.id,
-    companyId: data.company_id,
-    userId: data.user_id,
-    fullName: data.full_name,
-    role: data.role,
-    positionIds: data.position_ids || [],
-    weeklyHours: Number(data.weekly_hours),
-    isActive: data.is_active,
-    location: data.location,
-    allowedStartTime: data.allowed_start_time,
-    allowedEndTime: data.allowed_end_time,
-    hourlyRate: data.hourly_rate ? Number(data.hourly_rate) : undefined,
+    id: employee.id,
+    companyId: employee.companyId,
+    userId: employee.userId ?? undefined,
+    fullName: employee.fullName,
+    role: employee.role,
+    positionIds: employee.positionIds,
+    weeklyHours: Number(employee.weeklyHours),
+    isActive: employee.isActive,
+    location: employee.location ?? undefined,
+    allowedStartTime: employee.allowedStartTime ?? undefined,
+    allowedEndTime: employee.allowedEndTime ?? undefined,
+    hourlyRate: employee.hourlyRate ? Number(employee.hourlyRate) : undefined,
   }
 }
 
 export async function getEmployeeByUserId(userId: string): Promise<Employee | null> {
-  const supabase = createClient()
+  const employee = await prisma.employee.findFirst({
+    where: { userId },
+  })
 
-  const { data, error } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (error) throw error
-  if (!data) return null
+  if (!employee) return null
 
   return {
-    id: data.id,
-    companyId: data.company_id,
-    userId: data.user_id,
-    fullName: data.full_name,
-    role: data.role,
-    positionIds: data.position_ids || [],
-    weeklyHours: Number(data.weekly_hours),
-    isActive: data.is_active,
-    location: data.location,
-    allowedStartTime: data.allowed_start_time,
-    allowedEndTime: data.allowed_end_time,
-    hourlyRate: data.hourly_rate ? Number(data.hourly_rate) : undefined,
+    id: employee.id,
+    companyId: employee.companyId,
+    userId: employee.userId ?? undefined,
+    fullName: employee.fullName,
+    role: employee.role,
+    positionIds: employee.positionIds,
+    weeklyHours: Number(employee.weeklyHours),
+    isActive: employee.isActive,
+    location: employee.location ?? undefined,
+    allowedStartTime: employee.allowedStartTime ?? undefined,
+    allowedEndTime: employee.allowedEndTime ?? undefined,
+    hourlyRate: employee.hourlyRate ? Number(employee.hourlyRate) : undefined,
   }
 }
 
 export async function saveEmployee(employee: Employee): Promise<Employee> {
-  const supabase = createClient()
-
-  const payload = {
-    id: employee.id,
-    company_id: employee.companyId,
-    user_id: employee.userId,
-    full_name: employee.fullName,
-    role: employee.role,
-    position_ids: employee.positionIds,
-    weekly_hours: employee.weeklyHours,
-    is_active: employee.isActive,
-    location: employee.location,
-    allowed_start_time: employee.allowedStartTime,
-    allowed_end_time: employee.allowedEndTime,
-    hourly_rate: employee.hourlyRate,
-  }
-
-  const { data, error } = await supabase
-    .from('employees')
-    .upsert(payload)
-    .select()
-    .single()
-
-  if (error) throw error
+  const data = await prisma.employee.upsert({
+    where: { id: employee.id },
+    create: {
+      id: employee.id,
+      companyId: employee.companyId,
+      userId: employee.userId ?? null,
+      fullName: employee.fullName,
+      role: employee.role,
+      positionIds: employee.positionIds,
+      weeklyHours: new Prisma.Decimal(employee.weeklyHours),
+      isActive: employee.isActive,
+      location: employee.location ?? null,
+      allowedStartTime: employee.allowedStartTime ?? null,
+      allowedEndTime: employee.allowedEndTime ?? null,
+      hourlyRate: employee.hourlyRate ? new Prisma.Decimal(employee.hourlyRate) : null,
+    },
+    update: {
+      userId: employee.userId ?? null,
+      fullName: employee.fullName,
+      role: employee.role,
+      positionIds: employee.positionIds,
+      weeklyHours: new Prisma.Decimal(employee.weeklyHours),
+      isActive: employee.isActive,
+      location: employee.location ?? null,
+      allowedStartTime: employee.allowedStartTime ?? null,
+      allowedEndTime: employee.allowedEndTime ?? null,
+      hourlyRate: employee.hourlyRate ? new Prisma.Decimal(employee.hourlyRate) : null,
+    },
+  })
 
   return {
     id: data.id,
-    companyId: data.company_id,
-    userId: data.user_id,
-    fullName: data.full_name,
+    companyId: data.companyId,
+    userId: data.userId ?? undefined,
+    fullName: data.fullName,
     role: data.role,
-    positionIds: data.position_ids || [],
-    weeklyHours: Number(data.weekly_hours),
-    isActive: data.is_active,
-    location: data.location,
-    allowedStartTime: data.allowed_start_time,
-    allowedEndTime: data.allowed_end_time,
-    hourlyRate: data.hourly_rate ? Number(data.hourly_rate) : undefined,
+    positionIds: data.positionIds,
+    weeklyHours: Number(data.weeklyHours),
+    isActive: data.isActive,
+    location: data.location ?? undefined,
+    allowedStartTime: data.allowedStartTime ?? undefined,
+    allowedEndTime: data.allowedEndTime ?? undefined,
+    hourlyRate: data.hourlyRate ? Number(data.hourlyRate) : undefined,
   }
 }

@@ -1,63 +1,58 @@
-import { createClient } from '../supabase/client'
+import prisma from '../prisma/client'
 import { Shift, ShiftStatus } from '../types'
 
-export async function getShifts(companyId: string, weekStart: string, weekEnd: string): Promise<Shift[]> {
-  const supabase = createClient()
+function formatDate(date: Date): string {
+  return date.toISOString().split('T')[0]
+}
 
-  const { data, error } = await supabase
-    .from('shifts')
-    .select('*')
-    .eq('company_id', companyId)
-    .gte('date', weekStart)
-    .lte('date', weekEnd)
-    .order('date')
-    .order('start_time')
-
-  if (error) throw error
-
-  return (data || []).map((s: any) => ({
+function mapShiftToType(s: any): Shift {
+  return {
     id: s.id,
-    companyId: s.company_id,
-    employeeId: s.employee_id,
-    employeeName: s.employee_name,
-    date: s.date,
-    startTime: s.start_time,
-    endTime: s.end_time,
-    role: s.role,
-    positionId: s.position_id,
+    companyId: s.companyId,
+    employeeId: s.employeeId,
+    employeeName: s.employeeName ?? undefined,
+    date: formatDate(s.date),
+    startTime: s.startTime,
+    endTime: s.endTime,
+    role: s.role ?? undefined,
+    positionId: s.positionId ?? undefined,
     status: s.status as ShiftStatus,
-    checkInTime: s.check_in_time,
-    checkOutTime: s.check_out_time,
-  }))
+    checkInTime: s.checkInTime?.toISOString(),
+    checkOutTime: s.checkOutTime?.toISOString(),
+  }
+}
+
+export async function getShifts(companyId: string, weekStart: string, weekEnd: string): Promise<Shift[]> {
+  const shifts = await prisma.shift.findMany({
+    where: {
+      companyId,
+      date: {
+        gte: new Date(weekStart),
+        lte: new Date(weekEnd),
+      },
+    },
+    orderBy: [
+      { date: 'asc' },
+      { startTime: 'asc' },
+    ],
+  })
+
+  return shifts.map(mapShiftToType)
 }
 
 export async function getEmployeeShifts(companyId: string, employeeId: string): Promise<Shift[]> {
-  const supabase = createClient()
+  const shifts = await prisma.shift.findMany({
+    where: {
+      companyId,
+      employeeId,
+    },
+    orderBy: [
+      { date: 'asc' },
+      { startTime: 'asc' },
+    ],
+  })
 
-  const { data, error } = await supabase
-    .from('shifts')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('employee_id', employeeId)
-    .order('date')
-    .order('start_time')
-
-  if (error) throw error
-
-  return (data || []).map((s: any) => ({
-    id: s.id,
-    companyId: s.company_id,
-    employeeId: s.employee_id,
-    employeeName: s.employee_name,
-    date: s.date,
-    startTime: s.start_time,
-    endTime: s.end_time,
-    role: s.role,
-    positionId: s.position_id,
-    status: s.status as ShiftStatus,
-    checkInTime: s.check_in_time,
-    checkOutTime: s.check_out_time,
-  }))
+  return shifts.map(mapShiftToType)
 }
 
 export async function getShiftsByDateRange(
@@ -66,127 +61,92 @@ export async function getShiftsByDateRange(
   startDate: string,
   endDate: string
 ): Promise<Shift[]> {
-  const supabase = createClient()
+  const shifts = await prisma.shift.findMany({
+    where: {
+      companyId,
+      employeeId,
+      date: {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      },
+    },
+    orderBy: {
+      date: 'asc',
+    },
+  })
 
-  const { data, error } = await supabase
-    .from('shifts')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('employee_id', employeeId)
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .order('date')
-
-  if (error) throw error
-
-  return (data || []).map((s: any) => ({
-    id: s.id,
-    companyId: s.company_id,
-    employeeId: s.employee_id,
-    employeeName: s.employee_name,
-    date: s.date,
-    startTime: s.start_time,
-    endTime: s.end_time,
-    role: s.role,
-    positionId: s.position_id,
-    status: s.status as ShiftStatus,
-    checkInTime: s.check_in_time,
-    checkOutTime: s.check_out_time,
-  }))
+  return shifts.map(mapShiftToType)
 }
 
 export async function saveShift(shift: Shift): Promise<Shift> {
-  const supabase = createClient()
+  const data = await prisma.shift.upsert({
+    where: { id: shift.id },
+    create: {
+      id: shift.id,
+      companyId: shift.companyId,
+      employeeId: shift.employeeId,
+      employeeName: shift.employeeName ?? null,
+      date: new Date(shift.date),
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      role: shift.role ?? null,
+      positionId: shift.positionId ?? null,
+      status: shift.status,
+      checkInTime: shift.checkInTime ? new Date(shift.checkInTime) : null,
+      checkOutTime: shift.checkOutTime ? new Date(shift.checkOutTime) : null,
+    },
+    update: {
+      employeeName: shift.employeeName ?? null,
+      date: new Date(shift.date),
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      role: shift.role ?? null,
+      positionId: shift.positionId ?? null,
+      status: shift.status,
+      checkInTime: shift.checkInTime ? new Date(shift.checkInTime) : null,
+      checkOutTime: shift.checkOutTime ? new Date(shift.checkOutTime) : null,
+    },
+  })
 
-  const payload = {
-    id: shift.id,
-    company_id: shift.companyId,
-    employee_id: shift.employeeId,
-    employee_name: shift.employeeName,
-    date: shift.date,
-    start_time: shift.startTime,
-    end_time: shift.endTime,
-    role: shift.role,
-    position_id: shift.positionId,
-    status: shift.status,
-    check_in_time: shift.checkInTime,
-    check_out_time: shift.checkOutTime,
-  }
-
-  const { data, error } = await supabase
-    .from('shifts')
-    .upsert(payload)
-    .select()
-    .single()
-
-  if (error) throw error
-
-  return {
-    id: data.id,
-    companyId: data.company_id,
-    employeeId: data.employee_id,
-    employeeName: data.employee_name,
-    date: data.date,
-    startTime: data.start_time,
-    endTime: data.end_time,
-    role: data.role,
-    positionId: data.position_id,
-    status: data.status as ShiftStatus,
-    checkInTime: data.check_in_time,
-    checkOutTime: data.check_out_time,
-  }
+  return mapShiftToType(data)
 }
 
 export async function updateShiftStatus(shiftId: string, status: ShiftStatus): Promise<void> {
-  const supabase = createClient()
-
-  const { error } = await supabase
-    .from('shifts')
-    .update({ status })
-    .eq('id', shiftId)
-
-  if (error) throw error
+  await prisma.shift.update({
+    where: { id: shiftId },
+    data: { status },
+  })
 }
 
 export async function deleteShift(shiftId: string): Promise<void> {
-  const supabase = createClient()
-
-  const { error } = await supabase
-    .from('shifts')
-    .delete()
-    .eq('id', shiftId)
-
-  if (error) throw error
+  await prisma.shift.delete({
+    where: { id: shiftId },
+  })
 }
 
 export async function checkInShift(shiftId: string): Promise<void> {
-  const supabase = createClient()
-
-  const { error } = await supabase
-    .from('shifts')
-    .update({ check_in_time: new Date().toISOString() })
-    .eq('id', shiftId)
-
-  if (error) throw error
+  await prisma.shift.update({
+    where: { id: shiftId },
+    data: { checkInTime: new Date() },
+  })
 }
 
 export async function checkOutShift(shiftId: string): Promise<void> {
-  const supabase = createClient()
+  const checkOutTime = new Date()
 
-  const checkOutTime = new Date().toISOString()
-
-  // Close any open breaks
-  await supabase
-    .from('shift_breaks')
-    .update({ break_out: checkOutTime })
-    .eq('shift_id', shiftId)
-    .is('break_out', null)
-
-  // Update shift
-  const { error } = await supabase
-    .from('shifts')
-    .update({ check_out_time: checkOutTime })
-    .eq('id', shiftId)
-
-  if (error) throw error
+  await prisma.$transaction([
+    prisma.shiftBreak.updateMany({
+      where: {
+        shiftId,
+        breakOut: null,
+      },
+      data: {
+        breakOut: checkOutTime,
+      },
+    }),
+    prisma.shift.update({
+      where: { id: shiftId },
+      data: { checkOutTime },
+    }),
+  ])
 }

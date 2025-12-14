@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum ShiftStatus {
+  SCHEDULED
+  CONFIRMED
+  DECLINED
+  CANCELLED
+}
+
+model Company {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users       User[]
+  employees   Employee[]
+  positions   Position[]
+  shifts      Shift[]
+  shiftBreaks ShiftBreak[] @relation("CompanyShiftBreaks")
+
+  @@map("companies")
+}
+
+model User {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  name      String
+  email     String   @unique
+  role      UserRole @default(STAFF)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
+  sessions  Session[]
+
+  @@index([companyId])
+  @@index([email])
+  @@map("users")
+}
+
+model Employee {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  fullName         String   @map("full_name")
+  role             String   @default("")
+  positionIds      String[] @default([]) @map("position_ids")
+  weeklyHours      Decimal  @default(0) @map("weekly_hours") @db.Decimal
+  isActive         Boolean  @default(true) @map("is_active")
+  location         String?
+  allowedStartTime String?  @map("allowed_start_time")
+  allowedEndTime   String?  @map("allowed_end_time")
+  hourlyRate       Decimal? @map("hourly_rate") @db.Decimal
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  shifts        Shift[]
+  availability  Availability[]
+  shiftBreaks   ShiftBreak[]
+
+  @@index([companyId])
+  @@index([userId])
+  @@map("employees")
+}
+
+model Position {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  name      String
+  color     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shifts  Shift[]
+
+  @@index([companyId])
+  @@map("positions")
+}
+
+model Shift {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId    String       @map("company_id") @db.Uuid
+  employeeId   String       @map("employee_id") @db.Uuid
+  employeeName String?      @map("employee_name")
+  date         DateTime     @db.Date
+  startTime    String       @map("start_time")
+  endTime      String       @map("end_time")
+  role         String?
+  positionId   String?      @map("position_id") @db.Uuid
+  status       ShiftStatus  @default(SCHEDULED)
+  checkInTime  DateTime?    @map("check_in_time") @db.Timestamptz(6)
+  checkOutTime DateTime?    @map("check_out_time") @db.Timestamptz(6)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee    Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  position    Position?    @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  shiftBreaks ShiftBreak[]
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([date])
+  @@map("shifts")
+}
+
+model Availability {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeId String   @map("employee_id") @db.Uuid
+  weekday    Int
+  startTime  String   @map("start_time")
+  endTime    String   @map("end_time")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("availability")
+}
+
+model ShiftBreak {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  shiftId    String    @map("shift_id") @db.Uuid
+  employeeId String    @map("employee_id") @db.Uuid
+  breakIn    DateTime  @map("break_in") @db.Timestamptz(6)
+  breakOut   DateTime? @map("break_out") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company  Company  @relation("CompanyShiftBreaks", fields: [companyId], references: [id], onDelete: Cascade)
+  shift    Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([shiftId])
+  @@index([companyId])
+  @@map("shift_breaks")
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("sessions")
+}
