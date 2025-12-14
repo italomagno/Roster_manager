@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { User, CompanyRole } from '../types'
 import { signIn, signUp, signOut, getCurrentUser } from '../services/auth'
 import { createClient as createBrowserClient } from '../supabase/client'
@@ -17,62 +17,104 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const supabase = useMemo(() => createBrowserClient(), [])
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
+  // ✅ Função central: sincroniza user do seu app (public.users) a partir da sessão
+  const syncUserFromSession = async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession()
+      console.log(data, error)
+
+
+      if (error) console.error('[AuthContext] getSession error:', error.message)
+
+      const sessionUser = data.session?.user
+      if (!sessionUser) {
+        setUser(null)
+        return
+      }
+
+      // Busca perfil em public.users (sua função atual)
+      const profile = await getCurrentUser()
+      setUser(profile)
+    } catch (e) {
+      console.error('[AuthContext] syncUserFromSession crash:', e)
+      setUser(null)
+    }
+  }
+
   useEffect(() => {
-    const supabase = createBrowserClient()
+    let unsub: (() => void) | undefined
 
-    getCurrentUser().then(user => {
-      setUser(user)
+    ;(async () => {
+      setIsLoading(true)
+      await syncUserFromSession()
       setIsLoading(false)
-    })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        if (session?.user) {
-          const user = await getCurrentUser()
-          setUser(user)
-        } else {
-          setUser(null)
-        }
-      })()
-    })
+      const { data: sub } = supabase.auth.onAuthStateChange(async (_event, _session) => {
+        setIsLoading(true)
+        await syncUserFromSession()
+        setIsLoading(false)
+      })
+
+      unsub = () => sub.subscription.unsubscribe()
+    })()
 
     return () => {
-      subscription.unsubscribe()
+      if (unsub) unsub()
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase])
 
   const handleSignIn = async (email: string, password: string) => {
     setIsLoading(true)
     try {
       const result = await signIn(email, password)
-      if (result.error) {
-        return { error: result.error }
+
+      if (result.error) return { error: result.error }
+
+      // ✅ garante que atualizou estado do contexto
+      await syncUserFromSession()
+
+      // se o profile não existir por algum motivo, não redireciona “cego”
+      if (!user) {
+        // tenta pegar direto de novo
+        const profile = await getCurrentUser()
+        setUser(profile)
       }
-      if (result.user) {
-        setUser(result.user)
-        router.push('/roster')
-      }
+
+      router.push('/roster')
       return { error: null }
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleSignUp = async (email: string, password: string, fullName: string, role: CompanyRole = CompanyRole.STAFF) => {
+  const handleSignUp = async (
+    email: string,
+    password: string,
+    fullName: string,
+    role: CompanyRole = CompanyRole.STAFF
+  ) => {
     setIsLoading(true)
     try {
       const result = await signUp(email, password, fullName, role)
-      if (result.error) {
-        return { error: result.error }
+
+      // ⚠️ Se confirmação de email estiver ligada, você NÃO terá sessão aqui
+      if (result.error) return { error: result.error }
+
+      // se o serviço retornar "check your email", não tenta logar
+      if (!result.user) {
+        // tenta sincronizar; se não houver sessão, vai ficar null mesmo
+        await syncUserFromSession()
+        return { error: null }
       }
-      if (result.user) {
-        setUser(result.user)
-        router.push('/roster')
-      }
+
+      setUser(result.user)
+      router.push('/roster')
       return { error: null }
     } finally {
       setIsLoading(false)
@@ -80,13 +122,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const handleLogout = async () => {
-    await signOut()
-    setUser(null)
-    router.push('/login')
+    setIsLoading(true)
+    try {
+      await signOut()
+      setUser(null)
+      router.push('/login')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
-    <AuthContext.Provider value={{ user, signIn: handleSignIn, signUp: handleSignUp, logout: handleLogout, isLoading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        signIn: handleSignIn,
+        signUp: handleSignUp,
+        logout: handleLogout,
+        isLoading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
@@ -94,8 +149,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider')
   return context
 }
