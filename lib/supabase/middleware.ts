@@ -35,25 +35,16 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Mock authentication check - will be replaced with real auth later
-  const sessionToken = request.cookies.get('session_token')?.value
-
-  if (!sessionToken && !request.nextUrl.pathname.startsWith('/login')) {
-    // no token, redirect to login
+  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  // Protected routes for managers only
-  const managerRoutes = ['/employees', '/positions', '/tracking', '/reports']
-  const isManagerRoute = managerRoutes.some(route =>
-    request.nextUrl.pathname.startsWith(route)
-  )
-
-  if (isManagerRoute && sessionToken) {
-    // In a real app, check user role from database
-    // For now, we'll let the page components handle role checks
+  if (user && request.nextUrl.pathname.startsWith('/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/roster'
+    return NextResponse.redirect(url)
   }
 
   return supabaseResponse

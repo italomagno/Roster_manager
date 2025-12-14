@@ -1,5 +1,5 @@
 import { createClient } from './supabase/client'
-import { MOCK_COMPANY_ID, INITIAL_EMPLOYEES, INITIAL_POSITIONS } from './constants'
+import { DEMO_COMPANY_ID, INITIAL_EMPLOYEES, INITIAL_POSITIONS } from './constants'
 
 export async function seedDatabase() {
   const supabase = createClient()
@@ -10,14 +10,14 @@ export async function seedDatabase() {
   const { data: existingCompany } = await supabase
     .from('companies')
     .select('*')
-    .eq('id', MOCK_COMPANY_ID)
+    .eq('id', DEMO_COMPANY_ID)
     .maybeSingle()
 
   if (!existingCompany) {
     console.log('Creating demo company...')
     await supabase
       .from('companies')
-      .insert({ id: MOCK_COMPANY_ID, name: 'Demo Company' })
+      .insert({ id: DEMO_COMPANY_ID, name: 'Demo Company' })
   }
 
   // Seed positions
@@ -56,7 +56,6 @@ export async function seedDatabase() {
         .insert({
           id: employee.id,
           company_id: employee.companyId,
-          user_id: employee.userId,
           full_name: employee.fullName,
           role: employee.role,
           position_ids: employee.positionIds,
