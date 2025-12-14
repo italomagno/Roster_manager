@@ -3,15 +3,13 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Users, UserCheck, LogOut, LayoutDashboard, Menu, X, Tag, Clock, Briefcase, PieChart } from 'lucide-react'
+import { Users, LogOut, LayoutDashboard, Menu, X } from 'lucide-react'
 import { useAuth } from '../lib/contexts/AuthContext'
-import { CompanyRole } from '../lib/types'
 
 export function Navigation() {
   const { user, logout } = useAuth()
   const pathname = usePathname()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const isManager = user?.role === CompanyRole.MANAGER || user?.role === CompanyRole.OWNER
 
   const LinkItem = ({ icon: Icon, label, to, onClick }: { icon: any, label: string, to: string, onClick?: () => void }) => {
     const isActive = pathname?.startsWith(to)
@@ -34,18 +32,7 @@ export function Navigation() {
   const NavLinks = ({ onItemClick }: { onItemClick?: () => void }) => (
     <nav className="flex-1 px-4 py-6 space-y-1">
       <LinkItem icon={LayoutDashboard} label="Roster View" to="/roster" onClick={onItemClick} />
-
-      {isManager && (
-        <>
-          <LinkItem icon={Users} label="Employees" to="/employees" onClick={onItemClick} />
-          <LinkItem icon={Tag} label="Positions" to="/positions" onClick={onItemClick} />
-          <LinkItem icon={Clock} label="Time Tracking" to="/tracking" onClick={onItemClick} />
-          <LinkItem icon={PieChart} label="Reports" to="/reports" onClick={onItemClick} />
-        </>
-      )}
-
-      <LinkItem icon={UserCheck} label="My Shifts" to="/myshifts" onClick={onItemClick} />
-      <LinkItem icon={Briefcase} label="My Work" to="/my-work" onClick={onItemClick} />
+      <LinkItem icon={Users} label="Employees" to="/employees" onClick={onItemClick} />
     </nav>
   )
 

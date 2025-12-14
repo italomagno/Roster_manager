@@ -1,32 +1,33 @@
 import { createClient } from '../supabase/client'
-import { Employee } from '../types'
 
-export async function getEmployees(companyId: string): Promise<Employee[]> {
+export interface Employee {
+  id: string
+  full_name: string
+  role: string
+  created_at: string
+}
+
+export interface CreateEmployeeInput {
+  full_name: string
+  role?: string
+}
+
+export interface UpdateEmployeeInput {
+  full_name?: string
+  role?: string
+}
+
+export async function getEmployees(): Promise<Employee[]> {
   const supabase = createClient()
 
   const { data, error } = await supabase
     .from('employees')
     .select('*')
-    .eq('company_id', companyId)
-    .eq('is_active', true)
     .order('full_name')
 
   if (error) throw error
 
-  return (data || []).map((e: any) => ({
-    id: e.id,
-    companyId: e.company_id,
-    userId: e.user_id,
-    fullName: e.full_name,
-    role: e.role,
-    positionIds: e.position_ids || [],
-    weeklyHours: Number(e.weekly_hours),
-    isActive: e.is_active,
-    location: e.location,
-    allowedStartTime: e.allowed_start_time,
-    allowedEndTime: e.allowed_end_time,
-    hourlyRate: e.hourly_rate ? Number(e.hourly_rate) : undefined,
-  }))
+  return data || []
 }
 
 export async function getEmployee(employeeId: string): Promise<Employee | null> {
@@ -39,90 +40,49 @@ export async function getEmployee(employeeId: string): Promise<Employee | null> 
     .maybeSingle()
 
   if (error) throw error
-  if (!data) return null
-
-  return {
-    id: data.id,
-    companyId: data.company_id,
-    userId: data.user_id,
-    fullName: data.full_name,
-    role: data.role,
-    positionIds: data.position_ids || [],
-    weeklyHours: Number(data.weekly_hours),
-    isActive: data.is_active,
-    location: data.location,
-    allowedStartTime: data.allowed_start_time,
-    allowedEndTime: data.allowed_end_time,
-    hourlyRate: data.hourly_rate ? Number(data.hourly_rate) : undefined,
-  }
+  return data
 }
 
-export async function getEmployeeByUserId(userId: string): Promise<Employee | null> {
+export async function createEmployee(input: CreateEmployeeInput): Promise<Employee> {
   const supabase = createClient()
 
   const { data, error } = await supabase
     .from('employees')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (error) throw error
-  if (!data) return null
-
-  return {
-    id: data.id,
-    companyId: data.company_id,
-    userId: data.user_id,
-    fullName: data.full_name,
-    role: data.role,
-    positionIds: data.position_ids || [],
-    weeklyHours: Number(data.weekly_hours),
-    isActive: data.is_active,
-    location: data.location,
-    allowedStartTime: data.allowed_start_time,
-    allowedEndTime: data.allowed_end_time,
-    hourlyRate: data.hourly_rate ? Number(data.hourly_rate) : undefined,
-  }
-}
-
-export async function saveEmployee(employee: Employee): Promise<Employee> {
-  const supabase = createClient()
-
-  const payload = {
-    id: employee.id,
-    company_id: employee.companyId,
-    user_id: employee.userId,
-    full_name: employee.fullName,
-    role: employee.role,
-    position_ids: employee.positionIds,
-    weekly_hours: employee.weeklyHours,
-    is_active: employee.isActive,
-    location: employee.location,
-    allowed_start_time: employee.allowedStartTime,
-    allowed_end_time: employee.allowedEndTime,
-    hourly_rate: employee.hourlyRate,
-  }
-
-  const { data, error } = await supabase
-    .from('employees')
-    .upsert(payload)
+    .insert({
+      full_name: input.full_name,
+      role: input.role || 'Staff',
+    })
     .select()
     .single()
 
   if (error) throw error
+  return data
+}
 
-  return {
-    id: data.id,
-    companyId: data.company_id,
-    userId: data.user_id,
-    fullName: data.full_name,
-    role: data.role,
-    positionIds: data.position_ids || [],
-    weeklyHours: Number(data.weekly_hours),
-    isActive: data.is_active,
-    location: data.location,
-    allowedStartTime: data.allowed_start_time,
-    allowedEndTime: data.allowed_end_time,
-    hourlyRate: data.hourly_rate ? Number(data.hourly_rate) : undefined,
-  }
+export async function updateEmployee(
+  employeeId: string,
+  input: UpdateEmployeeInput
+): Promise<Employee> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('employees')
+    .update(input)
+    .eq('id', employeeId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function deleteEmployee(employeeId: string): Promise<void> {
+  const supabase = createClient()
+
+  const { error } = await supabase
+    .from('employees')
+    .delete()
+    .eq('id', employeeId)
+
+  if (error) throw error
 }
