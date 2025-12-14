@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/contexts/AuthContext'
 import { CompanyRole } from '../../lib/types'
 import { Button } from '../../components/ui'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const { signIn, signUp, user, isLoading } = useAuth()
@@ -103,9 +104,16 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                {mode === 'signin' && (
+                  <Link href="/forgot-password" className="text-xs text-blue-600 hover:text-blue-500">
+                    Forgot password?
+                  </Link>
+                )}
+              </div>
               <input
                 id="password"
                 type="password"

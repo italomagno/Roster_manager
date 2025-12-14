@@ -122,3 +122,31 @@ export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession()
   return session
 }
+
+export async function resetPasswordRequest(email: string): Promise<{ error: string | null }> {
+  const supabase = createBrowserClient()
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { error: null }
+}
+
+export async function updatePassword(newPassword: string): Promise<{ error: string | null }> {
+  const supabase = createBrowserClient()
+
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { error: null }
+}
